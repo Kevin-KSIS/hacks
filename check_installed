@@ -1,0 +1,21 @@
+function is_available {
+	if ! [ -x "$(command -v git)" ]; then
+		echo false
+	else
+		echo true
+	fi
+}
+
+function check_installed {
+	# anew
+	# resolveDomains
+	# naabu
+	# httpx
+	# nuclei
+	# jaeles
+	# ffuf
+	# gau
+	# gf
+	# fff
+	pr info 'Checking install'
+}
