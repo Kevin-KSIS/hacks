@@ -17,5 +17,7 @@ function check_installed {
 	# gau
 	# gf
 	# fff
+	# xkeys
+	# subzy
 	pr info 'Checking install'
 }

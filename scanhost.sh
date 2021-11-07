@@ -1,173 +1,148 @@
 #/bin/sh
 
-# Loading config
-SCRIPTPATH="$(dirname "$(readlink -f "$0")")"
-. "$SCRIPTPATH"/opt.cfg
-. "$SCRIPTPATH"/check_installed.sh
-
-# make temp dir
-# WORKDIR="./result/$1"
-WORKDIR="$HOME/.hack/$1.`date '+%Y%m%d'`"
-mkdir -p $WORKDIR 
-
-# create domain list
-echo $1|anew "$WORKDIR/domain_lst"
-
-
-# ======================= FUNCTIONS =======================
+# ======================= INCLUDES =======================
 
 function pr {
-	if [ -n "$1" ] && [ -n "$2" ]; then
-		case $1 in
-			info)
-				echo -e "\n${bblue}${2} ${reset}" | tee $WORKDIR/summary
-			;;
-			cmd)
-				if [ -n "$3" ]; then
-					echo -e "${yellow}  [${2}] ${gray} ${3} ${reset}" | tee $WORKDIR/summary
-				else
-					echo -e "${gray}  ${2} ${reset}" | tee $WORKDIR/summary
-				fi
-			;;
-		esac
-	fi
+	case $1 in
+		banner)
+			echo -e "\n${bgreen}$2 ${reset}"
+		;;
+		info)
+			echo -e "\n${bblue}${2} ${reset}"
+		;;	
+		error)
+			echo -e "\n${red}${2} ${reset}"
+		;;
+		cmd)
+			echo -e "$yellow [$2] $reset [$3] $gray $4 $reset"
+		;;
+	esac
 }
 
-function resolveIP {
-	# https://github.com/Josue87/resolveDomains
-	# > resolveDomains -d domainFiles.txt [-t 150] [-r 8.8.8.8:53]
-	command="resolveDomains -d $1 $resolveDomains_thread $resolveDomains_dns"
-	pr cmd "resolveDomains" "> $command"
-	eval $command \
-			| awk '{print $2}'\
-			| anew $anew_opt "$WORKDIR/ip_lst" 
-}
+SCRIPTPATH="$(dirname "$(readlink -f "$0")")"
+. "$SCRIPTPATH"/opt.cfg
+. "$SCRIPTPATH"/check_installed
+. "$SCRIPTPATH"/func/network_discovery.sh
+. "$SCRIPTPATH"/func/subdomain.sh
+. "$SCRIPTPATH"/func/tech_discovery.sh
+. "$SCRIPTPATH"/func/vulnscan.sh
+. "$SCRIPTPATH"/func/fuzzing.sh
+. "$SCRIPTPATH"/func/js_analysis.sh
 
-function portscanning {
-	# GO111MODULE=on go get -v github.com/projectdiscovery/naabu/v2/cmd/naabu
-	command="naabu -iL $1 $naabu_opt"
-	pr cmd "naabu" "> $command"
-	eval $command  | grep -v \* | anew $anew_opt "$WORKDIR/target_ports"
+
+# ======================= CATEGORIES =======================
+function print_usage {
+	# Todo: check requirement of each mode
+	echo "Usage: sch -t wildcard_domain [-s single_domain] [-m <below>] [-o output_dir]"
+	echo "  MODE: "
+	echo -e "\tdefault: all"
+	echo -e "\tsubdomain"
+	echo -e "\tscanport"
+	echo -e "\ttechz"
+	echo -e "\tvulnscan"
+	echo -e "\tfuzzing"
+	echo -e "\tjs"
+	exit 0
 }
 
 function subdomain {
-	for domain in `cat $1`; do
-
-		# ---- crt.sh
-		crtsh="curl -s \"https://crt.sh/?Identity=%.$domain\""
-		pr cmd "crt.sh" "> $crtsh"
-
-		eval $crtsh  | grep ">*.$domain" 			\
-				| sed 's/<[/]*[TB][DR]>/\n/g' 		\
-				| grep -vE "<|^[\*]*[\.]*$domain" 	\
-				| sort -u | uniq 					\
-				| awk 'NF' | grep --color $domain 	\
-				| anew $anew_opt "$WORKDIR/subdomain"
-
-		# ---- certspotter
-		certspotter="curl -s \"https://api.certspotter.com/v1/issuances?domain=$domain&expand=dns_names&expand=issuer\""
-
-		pr cmd "certspotter" "> $certspotter"
-		eval $certspotter 	| jq .[].dns_names[] 				\
-							| tr -d '\", ' 						\
-							| sort -u|uniq|grep --color $domain \
-							| anew $anew_opt "$WORKDIR/subdomain"
-
-	done
+	if [ -z $WILDCARD ]; then
+		# Out to: "$WORKDIR/subdomain"
+		crtsh "$WORKDIR/domain_lst"
+		certspotter "$WORKDIR/domain_lst"
+	else
+		cp "$WORKDIR/domain_lst" "$WORKDIR/subdomain"
+	fi
 }
 
-function techdetection {
-	# ---- httprobe
-	command="cat $1 | httprobe $httprobe_opt"
-	pr cmd "httprobe" "> $command"
-	eval $command | anew $anew_opt "$WORKDIR/alive"
-	# ---- httpx
-	# GO111MODULE=on go get -v github.com/projectdiscovery/httpx/cmd/httpx
-	command="cat $1 | httpx $httpx_opt"
-	pr cmd "httpX" "> $command"
-	eval $command | anew $anew_opt "$WORKDIR/techz" 
+function scanport {
+	# Output: "$WORKDIR/ip_lst"
+	resolveIP "$WORKDIR/domain_lst"
+	# Output: "$WORKDIR/target_ports"
+	naabu "$WORKDIR/ip_lst"
+}
+
+function techz {
+	httprobe "$WORKDIR/target_ports"
+	httprobe "$WORKDIR/subdomain"
+	httpx "$WORKDIR/target_ports"
+	httpx "$WORKDIR/subdomain"
 }
 
 function vulnscan {
-	# ---- nuclei
-	command="nuclei -l $1 $target $nuclei_opt"
-	pr cmd "nuclei" "> $command"
-	eval $command | anew "$WORKDIR/nuclei.log" 
-
-	# ---- jaeles
-	command="jaeles scan -U $1 $jaeles_opt -o $WORKDIR/jaeles.out/"
-	pr warn "[jaeles]"
-	eval $command | anew "$WORKDIR/jaeles.log" 
+	mkdir -p "$WORKDIR/vulns"
+	nuclei "$WORKDIR/alive"
+	# jaeles "$WORKDIR/alive"
+	subzy "$WORKDIR/subdomain"
 }
 
-function discover_path {
-	command="ffuf -w \"$1:HOST\" $ffuf_opt -u \"HOST/FUZZ\""
-	pr cmd 'ffuf' "> $command"
-	eval $command >> "$WORKDIR/ff.out"
+function fuzzing {
+	mkdir -p "$WORKDIR/fuzz"
+	ffuf "$WORKDIR/alive"
 }
 
-
-function jsfinding {
-	for target in `cat $1`; do
-		host=$( echo $target | awk -F '://' '{print $2}' | grep -Eo '^[^\/]*' )
-		output="$WORKDIR/js"
-		mkdir -p $output
-
-		# ---- gau
-		command="gau $target -subs"
-		pr cmd 'gau' "> $command"
-		eval $command 	| cut -d"?" -f1 			\
-						| grep -E "\.js+(?:on|)$" 	\
-						| sort -u |uniq \
-						| anew $anew_opt "$output/jsurls.txt"
-		
-		# ---- fff
-		command="sort $output/jsurls.txt |uniq| fff $fff_opt -o $output/saved/"
-		pr cmd 'fff' "> $command"
-		eval $command
-
-		# ---- gf
-		command="for pattern in \`gf -list\`; do [[ ${pattern} =~ "_secrets"* ]] && gf ${pattern} $output/saved/; done"
-		pr cmd 'gf' "> $command"
-		for pattern in `gf -list`; do 
-			[[ ${pattern} =~ "_secrets"* ]]
-			gf ${pattern} $output/saved/ | anew "$output/secret"
-		done
-
-		# ---- xkeys
-		cat $output/jsurls.txt | xkeys | anew "$output/secret"
-	done
+function js {
+	jsfinding "$WORKDIR/alive"
 }
 
+# ======================= ARGUMENTS PARSING =======================
+
+MODE="all"	
+while getopts 't:m:o:h:s' option; do
+	case "${option}" in
+		t) HOST="${OPTARG}"; WILDCARD='true' ;;
+		s) HOST="${OPTARG}" ;;
+		m) MODE="${OPTARG}" ;;
+		o) WORKDIR="${OPTARG}" ;;
+		h) print_usage ;;
+		*) print_usage ;;
+	esac
+done
+if [ -z $1 ]; then print_usage
+elif [ -n $1 ] && [ -z $HOST ]; then HOST="$1"	
+fi
+
+if [ -z $WORKDIR ] && [ -n $HOST ]; then 
+	WORKDIR="$HOME/bb/$HOST.`date '+%Y%m%d'`" 
+fi
 
 # ======================= MAIN =======================
+pr banner "[+] Target: $HOST"
+pr banner "[+] Output: $WORKDIR"
+pr banner "[+] Mode: $MODE\n"
 
-HOST=${1:-/dev/stdin}
-pr info "[+] Target $HOST"
+mkdir -p "$WORKDIR"
+echo $HOST | anew $anew_opt "$WORKDIR/domain_lst"
 
-pr info "[Step 1: 1/2] Resolving IP > $WORKDIR/ip_lst"
-resolveIP "$WORKDIR/domain_lst"
+case $MODE in 
+	all)
+		subdomain
+		scanport
+		techz
+		vulnscan
+		fuzzing
+		js
+	;;
+	subdomain)
+		subdomain
+	;;
+	scanport)
+		scanport
+	;;
+	techz)
+		techz
+	;;
+	vulnscan)
+		subdomain
+		techz 
+		vulnscan
+	;;
+	fuzzing)
+		fuzzing
+	;;
+	js)
+		js
+	;;
+esac
 
-pr info "[Step 1: 2/2] Scanning port by IP > $WORKDIR/target_ports"
-portscanning "$WORKDIR/ip_lst"
 
-
-pr info "[Step 2: 1/2] Discover subdomain > $WORKDIR/subdomain"
-subdomain "$WORKDIR/domain_lst"
-
-pr info "[Step 2: 2/2] Scanning port by domain > $WORKDIR/target_ports"
-portscanning "$WORKDIR/subdomain"
-
-
-pr info "[Step 3: 1/2] Detect web app > $WORKDIR/techz"
-techdetection "$WORKDIR/target_ports"
-
-
-pr info "[Step 4] Scanning vulnerability > $WORKDIR/vulns"
-vulnscan "$WORKDIR/alive"
-
-pr info "[Step 5: 1/2] Discover path > $WORKDIR/ff.out"
-discover_path "$WORKDIR/alive"
-
-pr info "[Step 5: 2/2] Discover js > $WORKDIR/js/"
-jsfinding "$WORKDIR/alive"
