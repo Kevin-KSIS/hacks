@@ -3,3 +3,5 @@ function ffuf {
 	pr cmd 'ffuf' "$WORKDIR/ffuf.html" "> $command"
 	sh -c "$command" 
 }
+
+# https://github.com/yunemse48/403bypasser

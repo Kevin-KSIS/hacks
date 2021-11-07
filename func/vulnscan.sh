@@ -18,3 +18,6 @@ function subzy {
 	pr cmd 'subzy' "$WORKDIR/vulns/takeover" "$command"
 	sh -c "$command"  | anew "$WORKDIR/vulns/takeover"
 }
+
+# https://github.com/fngoo/web_cache_poison/
+# https://github.com/Kevin-KSIS/postmsg

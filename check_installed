@@ -7,17 +7,25 @@ function is_available {
 }
 
 function check_installed {
-	# anew
-	# resolveDomains
-	# naabu
-	# httpx
-	# nuclei
+	# anew | go install github.com/tomnomnom/anew@latest 
+	# resolveDomains | git clone https://github.com/Josue87/resolveDomains.git && cmd resolveDomains && go build -o $GOPATH/ && cd .. && rm -rf resolveDomains
+	# naabu | go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest                                   
+	
+	# httpx | go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+
+	# nuclei | go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+
 	# jaeles
-	# ffuf
-	# gau
-	# gf
+	# ffuf | go install -v github.com/ffuf/ffuf@latest
+
+	# gau | go install -v github.com/lc/gau@latest 
+	# gf | go install -v github.com/tomnomnom/gf@latest                                         
 	# fff
 	# xkeys
 	# subzy
+	# sublist3r
+
+	# Amasss | brew tap caffix/amass && brew install amass
+
 	pr info 'Checking install'
 }

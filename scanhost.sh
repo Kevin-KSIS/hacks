@@ -5,21 +5,20 @@
 function pr {
 	case $1 in
 		banner)
-			echo -e "\n${bgreen}$2 ${reset}"
+			echo $echo_opt "\n${bgreen}$2 ${reset}"
 		;;
 		info)
-			echo -e "\n${bblue}${2} ${reset}"
+			echo $echo_opt "\n${bblue}${2} ${reset}"
 		;;	
 		error)
-			echo -e "\n${red}${2} ${reset}"
+			echo $echo_opt "\n${red}${2} ${reset}"
 		;;
 		cmd)
-			echo -e "$yellow [$2] $reset [$3] $gray $4 $reset"
+			echo $echo_opt "$yellow [$2] $reset [$3] $gray $4 $reset"
 		;;
 	esac
 }
-
-SCRIPTPATH="$(dirname "$(readlink -f "$0")")"
+SCRIPTPATH="$(dirname "$0")"
 . "$SCRIPTPATH"/opt.cfg
 . "$SCRIPTPATH"/check_installed
 . "$SCRIPTPATH"/func/network_discovery.sh
@@ -35,29 +34,30 @@ function print_usage {
 	# Todo: check requirement of each mode
 	echo "Usage: sch -t wildcard_domain [-s single_domain] [-m <below>] [-o output_dir]"
 	echo "  MODE: "
-	echo -e "\tdefault: all"
-	echo -e "\tsubdomain"
-	echo -e "\tscanport"
-	echo -e "\ttechz"
-	echo -e "\tvulnscan"
-	echo -e "\tfuzzing"
-	echo -e "\tjs"
+	echo $echo_opt "\tdefault: all"
+	echo $echo_opt "\tsubdomain"
+	echo $echo_opt "\tscanport"
+	echo $echo_opt "\ttechz"
+	echo $echo_opt "\tvulnscan"
+	echo $echo_opt "\tfuzzing"
+	echo $echo_opt "\tjs"
 	exit 0
 }
 
 function subdomain {
 	if [ -z $WILDCARD ]; then
 		# Out to: "$WORKDIR/subdomain"
-		crtsh "$WORKDIR/domain_lst"
-		certspotter "$WORKDIR/domain_lst"
+		crtsh "$WORKDIR/target_lst"
+		certspotter "$WORKDIR/target_lst"
+		sublist3r "$WORKDIR/target_lst"
 	else
-		cp "$WORKDIR/domain_lst" "$WORKDIR/subdomain"
+		cp "$WORKDIR/target_lst" "$WORKDIR/subdomain"
 	fi
 }
 
 function scanport {
 	# Output: "$WORKDIR/ip_lst"
-	resolveIP "$WORKDIR/domain_lst"
+	resolveIP "$WORKDIR/target_lst"
 	# Output: "$WORKDIR/target_ports"
 	naabu "$WORKDIR/ip_lst"
 }
@@ -83,6 +83,10 @@ function fuzzing {
 
 function js {
 	jsfinding "$WORKDIR/alive"
+}
+
+function test {
+	amass_tool "$WORKDIR/target_lst"
 }
 
 # ======================= ARGUMENTS PARSING =======================
@@ -112,7 +116,7 @@ pr banner "[+] Output: $WORKDIR"
 pr banner "[+] Mode: $MODE\n"
 
 mkdir -p "$WORKDIR"
-echo $HOST | anew $anew_opt "$WORKDIR/domain_lst"
+echo $HOST | anew $anew_opt "$WORKDIR/target_lst"
 
 case $MODE in 
 	all)
@@ -142,6 +146,9 @@ case $MODE in
 	;;
 	js)
 		js
+	;;
+	test)
+		test
 	;;
 esac
 
